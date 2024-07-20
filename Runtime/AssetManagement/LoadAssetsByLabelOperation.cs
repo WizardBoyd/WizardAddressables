@@ -138,20 +138,20 @@ namespace WizardAddressables.Runtime.AssetManagement
     public class LoadAssetsByLabelOperation<T> : AsyncOperationBase<List<AsyncOperationHandle<T>>> where T : Object
     {
         protected string m_label;
-        protected Dictionary<object, AsyncOperationHandle<T>> m_loadedDictionary;
-        protected Dictionary<object , AsyncOperationHandle<T>> m_loadingDictionary;
-        Action<object, AsyncOperationHandle<T>> m_loadedCallback;
+        protected Dictionary<object, AsyncOperationHandle> m_loadedDictionary;
+        protected Dictionary<object , AsyncOperationHandle> m_loadingDictionary;
+        Action<object, AsyncOperationHandle> m_loadedCallback;
 
-        public LoadAssetsByLabelOperation(Dictionary<object, AsyncOperationHandle<T>> loadedDictionary,
-            Dictionary<object, AsyncOperationHandle<T>> loadingDictionary,
-            string label, Action<object, AsyncOperationHandle<T>> loadedCallback)
+        public LoadAssetsByLabelOperation(Dictionary<object, AsyncOperationHandle> loadedDictionary,
+            Dictionary<object, AsyncOperationHandle> loadingDictionary,
+            string label, Action<object, AsyncOperationHandle> loadedCallback)
         {
             m_loadedDictionary = loadedDictionary;
             if (m_loadedDictionary == null)
-                m_loadedDictionary = new Dictionary<object, AsyncOperationHandle<T>>();
+                m_loadedDictionary = new Dictionary<object, AsyncOperationHandle>();
             m_loadingDictionary = loadingDictionary;
             if (m_loadingDictionary == null)
-                m_loadingDictionary = new Dictionary<object, AsyncOperationHandle<T>>();
+                m_loadingDictionary = new Dictionary<object, AsyncOperationHandle>();
 
             m_loadedCallback = loadedCallback;
             
