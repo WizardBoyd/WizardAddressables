@@ -2,12 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel.Design;
 using System.Linq;
-using log4net.Util.TypeConverters;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
 using UnityEngine.AddressableAssets.ResourceLocators;
 using UnityEngine.ResourceManagement.ResourceLocations;
 using UnityEngine.ResourceManagement.AsyncOperations;
+using WizardAddressables.Runtime.Exceptions;
 using WizardOptimizations.Runtime.Singelton;
 using Object = UnityEngine.Object;
 
@@ -166,7 +166,7 @@ namespace WizardAddressables.Runtime.AssetManagement
                 result = null;
                 var go = handle.Result as GameObject;
                 if(!go)
-                    throw new ConversionNotSupportedException($"Cannot convert {nameof(handle.Result)} to {nameof(GameObject)}");
+                    throw new ConversionException($"Cannot convert {nameof(handle.Result)} to {nameof(GameObject)}");
                 result = go.GetComponent<TComponentType>();
                 if(!result)
                     throw new CheckoutException($"Cannot convert {nameof(go)} to {nameof(TComponentType)}");
@@ -557,11 +557,11 @@ namespace WizardAddressables.Runtime.AssetManagement
         {
             GameObject go = handle.Result as GameObject;
             if (!go)
-                throw new ConversionNotSupportedException(
+                throw new ConversionException(
                     $"Cannot convert {nameof(handle.Result)} to {nameof(GameObject)}");
             TComponentType component = go.GetComponent<TComponentType>();
             if (!component)
-                throw new ConversionNotSupportedException(
+                throw new ConversionException(
                     $"Cannot convert {nameof(go)} to {nameof(TComponentType)}");
             var result = Addressables.ResourceManager.CreateCompletedOperation(component, string.Empty);
             return result;
