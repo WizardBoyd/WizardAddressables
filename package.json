@@ -1,0 +1,14 @@
+{
+  "name": "com.wizboyd.wizardaddressables",
+  "version": "1.0.0",
+  "displayName": "Wizard Addressables",
+  "description": "Custom Addressable managing features",
+  "unity": "2022.3",
+  "dependencies": {
+  },
+  "author": {
+    "name": "Luis Boyd",
+    "email": "luisboyd2000@gmail.com",
+    "url": "https://luisboyd.netlify.app"
+  }
+}
