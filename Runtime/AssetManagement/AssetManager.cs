@@ -177,6 +177,7 @@ namespace WizardAddressables.Runtime.AssetManagement
             return false;
         }
         
+        
         public AsyncOperationHandle<List<AsyncOperationHandle<Object>>> LoadAssetsByLabelAsync(string label)
         {
             var handle = Addressables.ResourceManager.StartOperation(
@@ -184,10 +185,10 @@ namespace WizardAddressables.Runtime.AssetManagement
             return handle;
         }
         
-        public AsyncOperationHandle<List<AsyncOperationHandle<T>>> LoadAssetsByLabelAsync<T>(string label) where T : UnityEngine.Object
+        public AsyncOperationHandle<List<AsyncOperationHandle<T>>> LoadAssetsByLabelAsync<T>(string label, Action<object, AsyncOperationHandle<T>> callback) where T : UnityEngine.Object
         {
             var handle = Addressables.ResourceManager.StartOperation(
-                new LoadAssetsByLabelOperation<T>(m_loadedAssets, m_loadingAssets, label, AssetLoadedCallback), default);
+                new LoadAssetsByLabelOperation<T>(m_loadedAssets, m_loadingAssets, label, callback), default);
             return handle;
         }
 

@@ -140,11 +140,11 @@ namespace WizardAddressables.Runtime.AssetManagement
         protected string m_label;
         protected Dictionary<object, AsyncOperationHandle> m_loadedDictionary;
         protected Dictionary<object , AsyncOperationHandle> m_loadingDictionary;
-        Action<object, AsyncOperationHandle> m_loadedCallback;
+        Action<object, AsyncOperationHandle<T>> m_loadedCallback;
 
         public LoadAssetsByLabelOperation(Dictionary<object, AsyncOperationHandle> loadedDictionary,
             Dictionary<object, AsyncOperationHandle> loadingDictionary,
-            string label, Action<object, AsyncOperationHandle> loadedCallback)
+            string label, Action<object, AsyncOperationHandle<T>> loadedCallback)
         {
             m_loadedDictionary = loadedDictionary;
             if (m_loadedDictionary == null)
