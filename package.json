@@ -5,6 +5,8 @@
   "description": "Custom Addressable managing features",
   "unity": "2022.3",
   "dependencies": {
+    "com.unity.addressables" : "1.21.21",
+    "com.wizboyd.wizardoptimizations" : "1.0.0"
   },
   "author": {
     "name": "Luis Boyd",
