@@ -97,6 +97,53 @@ namespace WizardAddressables.Runtime.AssetManagement
             };
             return false;
         }
+        
+        public bool TryGetOrLoadObjectAsync<TObjectType>(object runtimeKey,
+            out AsyncOperationHandle<TObjectType> handle) where TObjectType : UnityEngine.Object
+        {
+            CheckRuntimeKey(runtimeKey);
+            
+            if (m_loadedAssets.ContainsKey(runtimeKey))
+            {
+                try
+                {
+                    handle = m_loadedAssets[runtimeKey].Convert<TObjectType>();
+                }
+                catch (Exception e)
+                {
+                    handle = Addressables.ResourceManager.CreateCompletedOperation(m_loadedAssets[runtimeKey].Result as TObjectType, string.Empty);
+                }
+                return true;
+            }
+
+            if (m_loadingAssets.ContainsKey(runtimeKey))
+            {
+                try
+                {
+                    handle = m_loadingAssets[runtimeKey].Convert<TObjectType>();
+                }
+                catch (Exception e)
+                {
+                    handle = Addressables.ResourceManager.CreateChainOperation(m_loadingAssets[runtimeKey],
+                        operationHandle => Addressables.ResourceManager.CreateCompletedOperation(operationHandle.Result as TObjectType, string.Empty));
+                }
+
+                return false;
+            }
+
+            handle = Addressables.LoadAssetAsync<TObjectType>(runtimeKey);
+            
+            m_loadingAssets.Add(runtimeKey, handle);
+
+            handle.Completed += op2 =>
+            {
+                m_loadedAssets.Add(runtimeKey, op2);
+                m_loadingAssets.Remove(runtimeKey);
+
+                OnAssetLoaded?.Invoke(runtimeKey, op2);
+            };
+            return false;
+        }
 
         public bool TryGetOrLoadComponentAsync<TComponentType>(AssetReference reference,
             out AsyncOperationHandle<TComponentType> handle) where TComponentType : UnityEngine.Component
@@ -137,6 +184,45 @@ namespace WizardAddressables.Runtime.AssetManagement
             });
             return false;
         }
+        
+        public bool TryGetOrLoadComponentAsync<TComponentType>(object runtimeKey,
+            out AsyncOperationHandle<TComponentType> handle) where TComponentType : UnityEngine.Component
+        {
+            CheckRuntimeKey(runtimeKey);
+            
+
+            if (m_loadedAssets.ContainsKey(runtimeKey))
+            {
+                handle = ConvertHandleToComponent<TComponentType>(m_loadedAssets[runtimeKey]);
+                return true;
+            }
+
+            if (m_loadingAssets.ContainsKey(runtimeKey))
+            {
+                handle = Addressables.ResourceManager.CreateChainOperation(m_loadingAssets[runtimeKey],
+                    operationHandle => ConvertHandleToComponent<TComponentType>(operationHandle));
+                return false;
+            }
+
+            var op = Addressables.LoadAssetAsync<GameObject>(runtimeKey);
+            
+            m_loadingAssets.Add(runtimeKey, op);
+
+            op.Completed += op2 =>
+            {
+                m_loadedAssets.Add(runtimeKey, op2);
+                m_loadingAssets.Remove(runtimeKey);
+                OnAssetLoaded?.Invoke(runtimeKey, op2);
+            };
+
+            handle = Addressables.ResourceManager.CreateChainOperation<TComponentType, GameObject>(op, chainOp =>
+            {
+                var go = chainOp.Result;
+                var comp = go.GetComponent<TComponentType>();
+                return Addressables.ResourceManager.CreateCompletedOperation(comp, String.Empty);
+            });
+            return false;
+        }
 
         public bool TryGetObjectSync<TObjectType>(AssetReference reference, out TObjectType result)
             where TObjectType : UnityEngine.Object
@@ -153,6 +239,21 @@ namespace WizardAddressables.Runtime.AssetManagement
             result = null;
             return false;
         }
+        
+        public bool TryGetObjectSync<TObjectType>(object runtimeKey, out TObjectType result)
+            where TObjectType : UnityEngine.Object
+        {
+            CheckRuntimeKey(runtimeKey);
+
+            if (m_loadedAssets.ContainsKey(runtimeKey))
+            {
+                result = m_loadedAssets[runtimeKey].Convert<TObjectType>().Result;
+                return true;
+            }
+            
+            result = null;
+            return false;
+        }
 
         public bool TryGetComponentSync<TComponentType>(AssetReference reference, out TComponentType result)
             where TComponentType : UnityEngine.Component
@@ -163,6 +264,28 @@ namespace WizardAddressables.Runtime.AssetManagement
             if(m_loadedAssets.ContainsKey(key))
             {
                 var handle = m_loadedAssets[key];
+                result = null;
+                var go = handle.Result as GameObject;
+                if(!go)
+                    throw new ConversionException($"Cannot convert {nameof(handle.Result)} to {nameof(GameObject)}");
+                result = go.GetComponent<TComponentType>();
+                if(!result)
+                    throw new CheckoutException($"Cannot convert {nameof(go)} to {nameof(TComponentType)}");
+                return true;
+            }
+            
+            result = null;
+            return false;
+        }
+        
+        public bool TryGetComponentSync<TComponentType>(object runtimeKey, out TComponentType result)
+            where TComponentType : UnityEngine.Component
+        {
+            CheckRuntimeKey(runtimeKey);
+            
+            if(m_loadedAssets.ContainsKey(runtimeKey))
+            {
+                var handle = m_loadedAssets[runtimeKey];
                 result = null;
                 var go = handle.Result as GameObject;
                 if(!go)
@@ -292,6 +415,31 @@ namespace WizardAddressables.Runtime.AssetManagement
             });
             return false;
         }
+        
+        public bool TryInstantiateOrLoadAsync(Object runtimeKey, Vector3 position, Quaternion rotation,
+            Transform parent, out AsyncOperationHandle<GameObject> handle)
+        {
+            if(TryGetOrLoadObjectAsync(runtimeKey, out AsyncOperationHandle<GameObject> loadHandle))
+            {
+                var instance = InstantiateInternal(runtimeKey, loadHandle.Result, position, rotation, parent);
+                handle = Addressables.ResourceManager.CreateCompletedOperation(instance, string.Empty);
+                return true;
+            }
+
+            if (!loadHandle.IsValid())
+            {
+                Debug.LogError($"Load Operation was invalid: {loadHandle}");
+                handle = Addressables.ResourceManager.CreateCompletedOperation<GameObject>(null, $"Load Operation was invalid: {loadHandle}");
+                return false;
+            }
+
+            handle = Addressables.ResourceManager.CreateChainOperation(loadHandle, operationHandle =>
+            {
+                var instance = InstantiateInternal(runtimeKey, operationHandle.Result, position, rotation, parent);
+                return Addressables.ResourceManager.CreateCompletedOperation(instance, string.Empty);
+            });
+            return false;
+        }
 
         public bool TryInstantiateOrLoadAsync<TComponentType>(AssetReference reference, Vector3 postion,
             Quaternion rotation, Transform parent,
@@ -315,6 +463,33 @@ namespace WizardAddressables.Runtime.AssetManagement
             handle = Addressables.ResourceManager.CreateChainOperation(loadHandle, operationHandle =>
             {
                 var instance = InstantiateInternal(reference, operationHandle.Result, postion, rotation, parent);
+                return Addressables.ResourceManager.CreateCompletedOperation(instance, string.Empty);
+            });
+            return false;
+        }
+        
+        public bool TryInstantiateOrLoadAsync<TComponentType>(object runtimeKey, Vector3 postion,
+            Quaternion rotation, Transform parent,
+            out AsyncOperationHandle<TComponentType> handle) where TComponentType : Component
+        {
+            if (TryGetOrLoadComponentAsync(runtimeKey, out AsyncOperationHandle<TComponentType> loadHandle))
+            {
+                var instance = InstantiateInternal(runtimeKey, loadHandle.Result, postion, rotation, parent);
+                handle = Addressables.ResourceManager.CreateCompletedOperation(instance, string.Empty);
+                return true;
+            }
+
+            if (!loadHandle.IsValid())
+            {
+                Debug.LogError($"Load Operation was invalid: {loadHandle}");
+                handle = Addressables.ResourceManager.CreateCompletedOperation<TComponentType>(null, $"Load Operation was invalid: {loadHandle}");
+                return false;
+            }
+            
+            //Create a chain that waits for loadHandle to finish, then instantiates and returns the instance GO.
+            handle = Addressables.ResourceManager.CreateChainOperation(loadHandle, operationHandle =>
+            {
+                var instance = InstantiateInternal(runtimeKey, operationHandle.Result, postion, rotation, parent);
                 return Addressables.ResourceManager.CreateCompletedOperation(instance, string.Empty);
             });
             return false;
@@ -349,6 +524,43 @@ namespace WizardAddressables.Runtime.AssetManagement
                 for (int i = 0; i < count; i++)
                 {
                     var instance = InstantiateInternal(reference, operationHandle.Result, position, rotation, parent);
+                    list.Add(instance);
+                }
+
+                return Addressables.ResourceManager.CreateCompletedOperation(list, string.Empty);
+            });
+            return false;
+        }
+        
+        public bool TryInstantiateMultiOrLoadAsync(object runtimeKey, int count, Vector3 position,
+            Quaternion rotation, Transform parent,
+            out AsyncOperationHandle<List<GameObject>> handle)
+        {
+            if (TryGetOrLoadObjectAsync(runtimeKey, out AsyncOperationHandle<GameObject> loadHandle))
+            {
+                var list = new List<GameObject>(count);
+                for (int i = 0; i < count; i++)
+                {
+                    var instance = InstantiateInternal(runtimeKey, loadHandle.Result, position, rotation, parent);
+                    list.Add(instance);
+                }
+
+                handle = Addressables.ResourceManager.CreateCompletedOperation(list, string.Empty);
+            }
+
+            if (!loadHandle.IsValid())
+            {
+                Debug.LogError($"Load operation was invalid: {loadHandle}");
+                handle = Addressables.ResourceManager.CreateCompletedOperation<List<GameObject>>(null, $"Load operation was invalid: {loadHandle}");
+                return false;
+            }
+
+            handle = Addressables.ResourceManager.CreateChainOperation(loadHandle, operationHandle =>
+            {
+                var list = new List<GameObject>(count);
+                for (int i = 0; i < count; i++)
+                {
+                    var instance = InstantiateInternal(runtimeKey, operationHandle.Result, position, rotation, parent);
                     list.Add(instance);
                 }
 
@@ -395,6 +607,44 @@ namespace WizardAddressables.Runtime.AssetManagement
             return false;
         }
         
+        public bool TryInstantiateMultiOrLoadAsync<TComponentType>(Object runtimeKey, int count,
+            Vector3 position, Quaternion rotation, Transform parent,
+            out AsyncOperationHandle<List<TComponentType>> handle) where TComponentType : Component
+        {
+            if (TryGetOrLoadComponentAsync(runtimeKey, out AsyncOperationHandle<TComponentType> loadHandle))
+            {
+                var list = new List<TComponentType>(count);
+                for (int i = 0; i < count; i++)
+                {
+                    var instance = InstantiateInternal(runtimeKey, loadHandle.Result, position, rotation, parent);
+                    list.Add(instance);
+                }
+
+                handle = Addressables.ResourceManager.CreateCompletedOperation(list, string.Empty);
+                return true;
+            }
+
+            if (!loadHandle.IsValid())
+            {
+                Debug.LogError($"Load operation was invalid: {loadHandle}");
+                handle = Addressables.ResourceManager.CreateCompletedOperation<List<TComponentType>>(null, $"Load operation was invalid: {loadHandle}");
+                return false;
+            }
+            
+            handle = Addressables.ResourceManager.CreateChainOperation(loadHandle, operationHandle =>
+            {
+                var list = new List<TComponentType>(count);
+                for (int i = 0; i < count; i++)
+                {
+                    var instance = InstantiateInternal(runtimeKey, operationHandle.Result, position, rotation, parent);
+                    list.Add(instance);
+                }
+
+                return Addressables.ResourceManager.CreateCompletedOperation(list, string.Empty);
+            });
+            return false;
+        }
+        
         public bool TryInstantiateSync(AssetReference reference, Vector3 position, Quaternion rotation, Transform parent,
             out GameObject result)
         {
@@ -404,6 +654,18 @@ namespace WizardAddressables.Runtime.AssetManagement
                 return false;
             }
             result = InstantiateInternal(reference, loadedAsset, position, rotation, parent);
+            return true;
+        }
+        
+        public bool TryInstantiateSync(object runtimeKey, Vector3 position, Quaternion rotation, Transform parent,
+            out GameObject result)
+        {
+            if(!TryGetObjectSync(runtimeKey, out GameObject loadedAsset))
+            {
+                result = null;
+                return false;
+            }
+            result = InstantiateInternal(runtimeKey, loadedAsset, position, rotation, parent);
             return true;
         }
         
@@ -418,6 +680,19 @@ namespace WizardAddressables.Runtime.AssetManagement
            
            result = InstantiateInternal(reference, loadedAsset, position, rotation, parent);
            return true;
+        }
+        
+        public bool TryInstantiateSync<TComponentType>(object runtimeKey, Vector3 position, Quaternion rotation, Transform parent,
+            out TComponentType result) where TComponentType : Component
+        {
+            if(!TryGetComponentSync(runtimeKey, out TComponentType loadedAsset))
+            {
+                result = null;
+                return false;
+            }
+           
+            result = InstantiateInternal(runtimeKey, loadedAsset, position, rotation, parent);
+            return true;
         }
         
         public bool TryInstantiateMultiSync(AssetReference reference, int count, Vector3 position, Quaternion rotation,
@@ -439,6 +714,25 @@ namespace WizardAddressables.Runtime.AssetManagement
             return true;
         }
         
+        public bool TryInstantiateMultiSync(object runtimeKey, int count, Vector3 position, Quaternion rotation,
+            Transform parent, out List<GameObject> result)
+        {
+            if (!TryGetObjectSync(runtimeKey, out GameObject loadedAsset))
+            {
+                result = null;
+                return false;
+            }
+
+            result = new List<GameObject>(count);
+            for (int i = 0; i < count; i++)
+            {
+                var instance = InstantiateInternal(runtimeKey, loadedAsset, position, rotation, parent);
+                result.Add(instance);
+            }
+
+            return true;
+        }
+        
         public bool TryInstantiateMultiSync<TComponentType>(AssetReference reference, int count, Vector3 position,
             Quaternion rotation, Transform parent, out List<TComponentType> result) where TComponentType : Component
         {
@@ -452,6 +746,25 @@ namespace WizardAddressables.Runtime.AssetManagement
             for (int i = 0; i < count; i++)
             {
                 var instance = InstantiateInternal(reference, loadedAsset, position, rotation, parent);
+                result.Add(instance);
+            }
+
+            return true;
+        }
+        
+        public bool TryInstantiateMultiSync<TComponentType>(object runtimeKey, int count, Vector3 position,
+            Quaternion rotation, Transform parent, out List<TComponentType> result) where TComponentType : Component
+        {
+            if (!TryGetComponentSync(runtimeKey, out TComponentType loadedAsset))
+            {
+                result = null;
+                return false;
+            }
+
+            result = new List<TComponentType>(count);
+            for (int i = 0; i < count; i++)
+            {
+                var instance = InstantiateInternal(runtimeKey, loadedAsset, position, rotation, parent);
                 result.Add(instance);
             }
 
@@ -513,6 +826,23 @@ namespace WizardAddressables.Runtime.AssetManagement
             m_instantiatedObjects[key].Add(instance);
             return instance;
         }
+        
+        private GameObject InstantiateInternal(object runtimeKey, GameObject loadedAsset, Vector3 position,
+            Quaternion rotation, Transform parent)
+        {
+            
+            var instance = Object.Instantiate(loadedAsset, position, rotation, parent);
+            if(!instance)
+                throw new NullReferenceException($"Instantiated object of type '{typeof(GameObject)}' is null");
+            var monoTracker = instance.gameObject.AddComponent<MonoTracker>();
+            monoTracker.Key = runtimeKey;
+            monoTracker.OnDestroyed += TrackerDestroyed;
+            
+            if(!m_instantiatedObjects.ContainsKey(runtimeKey))
+                m_instantiatedObjects.Add(runtimeKey, new List<GameObject>(20));
+            m_instantiatedObjects[runtimeKey].Add(instance);
+            return instance;
+        }
 
         private TComponentType InstantiateInternal<TComponentType>(AssetReference reference, TComponentType loadedAsset,
             Vector3 position, Quaternion rotation, Transform parent) where TComponentType: Component
@@ -533,6 +863,27 @@ namespace WizardAddressables.Runtime.AssetManagement
                 m_instantiatedObjects.Add(key, new List<GameObject>(20));
             }
             m_instantiatedObjects[key].Add(instance.gameObject);
+            return instance;
+        }
+        
+        private TComponentType InstantiateInternal<TComponentType>(object runtimeKey, TComponentType loadedAsset,
+            Vector3 position, Quaternion rotation, Transform parent) where TComponentType: Component
+        {
+            
+            var instance = Object.Instantiate(loadedAsset, position, rotation, parent);
+            
+            if(!instance)
+                throw new NullReferenceException($"Instantiated object of type '{typeof(TComponentType)}' is null");
+            
+            var monoTracker = instance.gameObject.AddComponent<MonoTracker>();
+            monoTracker.Key = runtimeKey;
+            monoTracker.OnDestroyed += TrackerDestroyed;
+
+            if (!m_instantiatedObjects.ContainsKey(runtimeKey))
+            {
+                m_instantiatedObjects.Add(runtimeKey, new List<GameObject>(20));
+            }
+            m_instantiatedObjects[runtimeKey].Add(instance.gameObject);
             return instance;
         }
 
